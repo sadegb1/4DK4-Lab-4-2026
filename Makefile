@@ -2,19 +2,25 @@ CC ?= cc
 CFLAGS ?= -O2 -std=c11 -Wall -Wextra -Wpedantic
 LDLIBS ?= -lm
 
-.PHONY: all test clean
-
-all: arq_sim
-
-SOURCES = main.c packet_arrival.c packet_transmission.c output.c cleanup.c simlib.c
-HEADERS = main.h packet_arrival.h packet_transmission.h output.h cleanup.h \
+SOURCES = main.c parameters.c simulation.c packet_arrival.c \
+	packet_transmission.c channel.c packet_duration.c output.c cleanup.c \
+	simlib.c
+HEADERS = main.h parameters.h simulation.h packet_arrival.h \
+	packet_transmission.h channel.h packet_duration.h output.h cleanup.h \
 	simparameters.h simlib.h trace.h
 
-arq_sim: $(SOURCES) $(HEADERS)
+.PHONY: all test clean
+
+all: app
+
+app: $(SOURCES) $(HEADERS)
 	$(CC) $(CFLAGS) -o $@ $(SOURCES) $(LDLIBS)
 
-test: arq_sim
-	python3 tests/test_arq.py ./arq_sim
+app_trace: $(SOURCES) $(HEADERS)
+	$(CC) $(CFLAGS) -DTRACE_ON -o $@ $(SOURCES) $(LDLIBS)
+
+test: app
+	python3 tests/test_arq.py ./app
 
 clean:
-	rm -f arq_sim
+	rm -f app_trace

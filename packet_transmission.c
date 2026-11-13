@@ -4,195 +4,190 @@
 #include "main.h"
 #include "packet_arrival.h"
 #include "packet_transmission.h"
-
-static double
-next_data_start(const Simulation_State *state, double now)
-{
-  return state->data_tx_available > now ? state->data_tx_available : now;
-}
-
-void
-send_frame(Simulation_State *state, Packet_State *packet, double now)
-{
-  Transmission_Attempt *attempt;
-  double start_time = next_data_start(state, now);
-  double end_time = start_time + state->config.data_tx_time;
-
-  attempt = (Transmission_Attempt *) malloc(sizeof(*attempt));
-  if (attempt == NULL) {
-    fprintf(stderr, "Unable to allocate transmission event\n");
-    exit(EXIT_FAILURE);
-  }
-  attempt->packet = packet;
-  attempt->start_time = start_time;
-  attempt->next = state->attempts;
-  attempt->previous = NULL;
-  if (state->attempts != NULL)
-    state->attempts->previous = attempt;
-  state->attempts = attempt;
-
-  state->data_tx_available = end_time;
-  schedule_event(state, "Data transmission end", transmission_end_event,
-                 attempt, end_time);
-}
+#include "trace.h"
 
 static void
-schedule_selective_repeat_timer(Simulation_State *state,
-                               Packet_State *packet,
-                               double now)
-{
-  cancel_event(state, &packet->timer_event_id);
-  packet->timer_event_id =
-      schedule_event(state, "Selective-repeat timeout",
-                     selective_repeat_timeout_event, packet,
-                     now + state->config.timeout);
-}
-
-void
-schedule_go_back_n_timer(Simulation_State *state,
-                         Packet_State *packet,
-                         double now)
-{
-  if (state->go_back_n_timer_id != 0 &&
-      state->go_back_n_timer_packet == packet->id)
-    return;
-  cancel_event(state, &state->go_back_n_timer_id);
-  state->go_back_n_timer_packet = packet->id;
-  state->go_back_n_timer_id =
-      schedule_event(state, "Go-back-N timeout", go_back_n_timeout_event,
-                     packet, now + state->config.timeout);
-}
-
-void
-fill_sender_window(Simulation_State *state, double now)
-{
-  while (state->next_to_send - state->sender_base <
-             state->config.send_window &&
-         (state->config.source == SOURCE_BACKLOGGED ||
-          state->next_to_send < state->config.packet_limit)) {
-    Packet_State *packet = get_packet(state, state->next_to_send);
-
-    packet->created_at =
-        state->config.source == SOURCE_FINITE ? 0.0 : now;
-    send_frame(state, packet, now);
-    state->next_to_send++;
-    state->generated++;
-  }
-}
-
-void
-send_acknowledgment(Simulation_State *state,
-                    Packet_State *packet,
-                    double now)
-{
-  double start_time;
-  double end_time;
-
-  if (packet == NULL)
-    return;
-  start_time = state->ack_tx_available > now ? state->ack_tx_available : now;
-  end_time = start_time + state->config.ack_tx_time;
-  state->ack_tx_available = end_time;
-  schedule_event(state, "ACK transmission end", ack_transmission_end_event,
-                 packet, end_time);
-}
-
-static void
-release_attempt(Simulation_State *state, Transmission_Attempt *attempt)
+release_attempt(Simulation_Run_Data_Ptr data,
+                Transmission_Attempt_Ptr attempt)
 {
   if (attempt->previous != NULL)
     attempt->previous->next = attempt->next;
   else
-    state->attempts = attempt->next;
+    data->attempts = attempt->next;
   if (attempt->next != NULL)
     attempt->next->previous = attempt->previous;
   free(attempt);
 }
 
 void
-transmission_end_event(Simulation_Run_Ptr run, void *attachment)
+fill_sender_window(Simulation_Run_Ptr simulation_run)
 {
-  Simulation_State *state = state_from_run(run);
-  Transmission_Attempt *attempt = (Transmission_Attempt *) attachment;
-  Packet_State *packet = attempt->packet;
-  double now = simulation_run_get_time(run);
+  Simulation_Run_Data_Ptr data = simulation_run_get_data(simulation_run);
+  Time now = simulation_run_get_time(simulation_run);
+
+  while (data->next_to_send - data->sender_base <
+         data->parameters.send_window) {
+    Packet_Ptr packet;
+
+    if (data->parameters.source_mode == FINITE_SOURCE) {
+      packet = (Packet_Ptr) fifoqueue_get(data->source_buffer);
+      if (packet == NULL)
+        break;
+    } else {
+      packet = packet_new(data, now);
+    }
+
+    data->next_to_send++;
+    schedule_transmission_start_event(simulation_run, now, packet);
+  }
+}
+
+void
+schedule_transmission_start_event(Simulation_Run_Ptr simulation_run,
+                                  Time event_time,
+                                  Packet_Ptr packet)
+{
+  Simulation_Run_Data_Ptr data = simulation_run_get_data(simulation_run);
+  Transmission_Attempt_Ptr attempt;
+  Time start_time = data->data_link_available > event_time
+      ? data->data_link_available : event_time;
+
+  attempt = (Transmission_Attempt_Ptr) xmalloc(sizeof(Transmission_Attempt));
+  attempt->packet = packet;
+  attempt->start_time = start_time;
+  attempt->next = data->attempts;
+  attempt->previous = NULL;
+  if (data->attempts != NULL)
+    data->attempts->previous = attempt;
+  data->attempts = attempt;
+
+  data->data_link_available = start_time + packet->service_time;
+  schedule_event(simulation_run, "Start of data packet transmission",
+                 transmission_start_event, attempt, start_time);
+}
+
+void
+transmission_start_event(Simulation_Run_Ptr simulation_run, void *attachment)
+{
+  Simulation_Run_Data_Ptr data = simulation_run_get_data(simulation_run);
+  Transmission_Attempt_Ptr attempt =
+      (Transmission_Attempt_Ptr) attachment;
+  Packet_Ptr packet = attempt->packet;
+  Time now = simulation_run_get_time(simulation_run);
 
   if (packet->acknowledged &&
-      packet->acknowledged_at <= attempt->start_time) {
-    release_attempt(state, attempt);
+      packet->acknowledged_time <= attempt->start_time) {
+    release_attempt(data, attempt);
     return;
   }
 
-  if (packet->attempts == 0)
-    state->unique_packets_transmitted++;
-  else
-    state->retransmissions++;
-  packet->attempts++;
+  if (packet->transmission_attempts != 0)
+    data->retransmission_attempts++;
+  packet->transmission_attempts++;
+  data->transmission_attempts++;
+  packet->status = TRANSMITTING;
 
-  if (rand_stream_uniform_generator(state->random) <
-      state->config.data_error) {
-    state->data_losses++;
+  TRACE(printf("At %.3f: Packet %llu (seq %llu) transmission attempt %llu starts\n",
+               now, (unsigned long long) packet->id,
+               (unsigned long long) packet->sequence_number,
+               (unsigned long long) packet->transmission_attempts);)
+
+  schedule_event(simulation_run, "End of data packet transmission",
+                 transmission_end_event, attempt,
+                 now + packet->service_time);
+}
+
+void
+transmission_end_event(Simulation_Run_Ptr simulation_run, void *attachment)
+{
+  Simulation_Run_Data_Ptr data = simulation_run_get_data(simulation_run);
+  Transmission_Attempt_Ptr attempt =
+      (Transmission_Attempt_Ptr) attachment;
+  Packet_Ptr packet = attempt->packet;
+  Time now = simulation_run_get_time(simulation_run);
+
+  packet->status = WAITING;
+  if (channel_data_packet_success(data->channel)) {
+    TRACE(printf("At %.3f: Packet %llu transmission succeeded\n", now,
+                 (unsigned long long) packet->id);)
+    schedule_packet_arrival_event(
+        simulation_run, now + data->parameters.propagation_delay, packet);
   } else {
-    schedule_event(state, "Data frame arrival", data_arrival_event, packet,
-                   now + state->config.propagation_delay);
+    data->data_packet_errors++;
+    TRACE(printf("At %.3f: Packet %llu transmission failed\n", now,
+                 (unsigned long long) packet->id);)
   }
 
-  if (state->config.receive_window == 1) {
-    if (packet->id == state->sender_base && !packet->acknowledged)
-      schedule_go_back_n_timer(state, packet, now);
-  } else if (!packet->acknowledged) {
-    schedule_selective_repeat_timer(state, packet, now);
+  if (!packet->acknowledged) {
+    if (data->parameters.receive_window == 1) {
+      if (packet->id == data->sender_base)
+        schedule_go_back_n_timer(simulation_run, packet, now);
+    } else {
+      cancel_event(simulation_run, &packet->timeout_event_id);
+      packet->timeout_event_id =
+          schedule_event(simulation_run, "Selective-repeat timeout",
+                         selective_repeat_timeout_event, packet,
+                         now + data->parameters.timeout);
+    }
   }
-  release_attempt(state, attempt);
+  release_attempt(data, attempt);
 }
 
 void
-ack_transmission_end_event(Simulation_Run_Ptr run, void *attachment)
+schedule_go_back_n_timer(Simulation_Run_Ptr simulation_run,
+                         Packet_Ptr packet,
+                         Time now)
 {
-  Simulation_State *state = state_from_run(run);
-  Packet_State *packet = (Packet_State *) attachment;
+  Simulation_Run_Data_Ptr data = simulation_run_get_data(simulation_run);
 
-  state->ack_transmissions++;
-  if (rand_stream_uniform_generator(state->random) <
-      state->config.ack_error) {
-    state->ack_losses++;
+  if (data->go_back_n_timer_event_id != 0 &&
+      data->go_back_n_timer_packet_id == packet->id)
     return;
-  }
-
-  schedule_event(state, "ACK arrival", ack_arrival_event, packet,
-                 simulation_run_get_time(run) +
-                     state->config.propagation_delay);
+  cancel_event(simulation_run, &data->go_back_n_timer_event_id);
+  data->go_back_n_timer_packet_id = packet->id;
+  data->go_back_n_timer_event_id =
+      schedule_event(simulation_run, "Go-back-N timeout",
+                     go_back_n_timeout_event, packet,
+                     now + data->parameters.timeout);
 }
 
 void
-selective_repeat_timeout_event(Simulation_Run_Ptr run, void *attachment)
+selective_repeat_timeout_event(Simulation_Run_Ptr simulation_run,
+                               void *attachment)
 {
-  Simulation_State *state = state_from_run(run);
-  Packet_State *packet = (Packet_State *) attachment;
-  double now = simulation_run_get_time(run);
+  Simulation_Run_Data_Ptr data = simulation_run_get_data(simulation_run);
+  Packet_Ptr packet = (Packet_Ptr) attachment;
+  Time now = simulation_run_get_time(simulation_run);
 
-  packet->timer_event_id = 0;
+  packet->timeout_event_id = 0;
   if (packet->acknowledged)
     return;
-  send_frame(state, packet, now);
+  data->timeout_count++;
+  TRACE(printf("At %.3f: Timeout for packet %llu\n", now,
+               (unsigned long long) packet->id);)
+  schedule_transmission_start_event(simulation_run, now, packet);
 }
 
 void
-go_back_n_timeout_event(Simulation_Run_Ptr run, void *attachment)
+go_back_n_timeout_event(Simulation_Run_Ptr simulation_run, void *attachment)
 {
-  Simulation_State *state = state_from_run(run);
-  Packet_State *base_packet = (Packet_State *) attachment;
+  Simulation_Run_Data_Ptr data = simulation_run_get_data(simulation_run);
+  Packet_Ptr base_packet = (Packet_Ptr) attachment;
   uint64_t id;
-  double now = simulation_run_get_time(run);
+  Time now = simulation_run_get_time(simulation_run);
 
-  state->go_back_n_timer_id = 0;
-  if (base_packet->id != state->sender_base ||
+  data->go_back_n_timer_event_id = 0;
+  if (base_packet->id != data->sender_base ||
       base_packet->acknowledged)
     return;
 
-  for (id = state->sender_base; id < state->next_to_send; id++) {
-    Packet_State *packet = state->packets[id];
-    if (packet != NULL && !packet->acknowledged && packet->attempts != 0)
-      send_frame(state, packet, now);
+  data->timeout_count++;
+  TRACE(printf("At %.3f: Go-back-N timeout at packet %llu\n", now,
+               (unsigned long long) base_packet->id);)
+  for (id = data->sender_base; id < data->next_to_send; id++) {
+    Packet_Ptr packet = packet_get(data, id);
+    if (packet != NULL && !packet->acknowledged &&
+        packet->transmission_attempts != 0)
+      schedule_transmission_start_event(simulation_run, now, packet);
   }
 }

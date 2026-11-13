@@ -16,8 +16,8 @@ def simulate(*arguments):
         text=True,
     )
     rows = list(csv.DictReader(io.StringIO(result.stdout)))
-    assert len(rows) == 1, result.stdout
-    return rows[0]
+    assert rows, result.stdout
+    return rows
 
 
 def rejects(*arguments):
@@ -30,61 +30,58 @@ def rejects(*arguments):
     assert result.stderr
 
 
-sw = simulate("--packets", "5", "--data-tx", "1", "--ack-tx", "0",
-              "--prop-delay", "0", "--timeout", "4")
+sw = simulate("--source", "finite", "--packets", "5", "--ws", "1",
+              "--wr", "1", "--pd", "0", "--pa", "0", "--seed", "41")[0]
 assert sw["protocol"] == "stop-and-wait"
 assert sw["generated"] == "5"
 assert sw["delivered"] == "5"
 assert sw["acked"] == "5"
-assert sw["sim_time"] == "5.000000000"
-assert sw["mean_delay"] == "3.000000000"
-assert sw["retransmissions"] == "0"
+assert sw["data_attempts"] == "5"
+assert sw["attempts_per_delivered"] == "1.000000"
+assert sw["simulation_time_ms"] == "55.000000"
+assert sw["link_efficiency"] == "0.090909"
+assert sw["mean_delay_ms"] == "28.000000"
 
-windowed = simulate("--packets", "4", "--ws", "4", "--wr", "1",
-                    "--data-tx", "1", "--ack-tx", "0.1",
-                    "--prop-delay", "0.5", "--timeout", "4")
-assert windowed["protocol"] == "go-back-n"
-assert windowed["sim_time"] == "5.100000000"
-assert float(windowed["sim_time"]) < 4 * (
-    1.0 + 2 * 0.5 + 0.1
-)
-
-gbn = simulate("--packets", "20", "--ws", "4", "--wr", "1",
-               "--data-error", "0.08", "--timeout", "2", "--seed", "10")
+gbn = simulate("--source", "backlogged", "--runlength", "25", "--ws", "12",
+               "--wr", "1", "--pd", "0", "--pa", "0", "--seed", "41")[0]
 assert gbn["protocol"] == "go-back-n"
-assert gbn["delivered"] == "20"
-assert gbn["acked"] == "20"
-assert int(gbn["retransmissions"]) > 0
+assert gbn["delivered"] == "25"
+assert gbn["timeouts"] == "0"
+assert gbn["attempts_per_delivered"] == "1.000000"
 
-sr = simulate("--packets", "20", "--ws", "4", "--wr", "4",
-              "--data-error", "0.08", "--ack-error", "0.05",
-              "--timeout", "2", "--seed", "10")
+sr = simulate("--source", "finite", "--packets", "20", "--ws", "4",
+              "--wr", "4", "--pd", "0.1", "--pa", "0.1",
+              "--seed", "41")[0]
 assert sr["protocol"] == "selective-repeat"
 assert sr["delivered"] == "20"
 assert sr["acked"] == "20"
-assert int(sr["data_lost"]) > 0
-assert int(sr["ack_lost"]) > 0
-assert int(sr["retransmissions"]) > 0
+assert int(sr["data_errors"]) > 0
+assert int(sr["ack_errors"]) > 0
+assert int(sr["timeouts"]) > 0
+assert float(sr["attempts_per_delivered"]) > 1.0
 
-backlogged = simulate("--source", "backlogged", "--duration", "10",
-                      "--ws", "3", "--wr", "3", "--data-error", "0",
-                      "--ack-error", "0", "--seed", "3")
-assert backlogged["protocol"] == "selective-repeat"
-assert backlogged["source"] == "backlogged"
-assert backlogged["sim_time"] == "10.000000000"
-assert int(backlogged["generated"]) >= int(backlogged["delivered"])
-assert int(backlogged["delivered"]) > 0
+short_timeout = simulate("--source", "finite", "--packets", "5", "--ws", "1",
+                         "--wr", "1", "--pd", "0", "--pa", "0",
+                         "--timeout", "1", "--seed", "41")[0]
+assert int(short_timeout["timeouts"]) > 0
+assert int(short_timeout["data_attempts"]) > 5
 
-repeat_a = simulate("--packets", "30", "--ws", "3", "--wr", "3",
-                    "--data-error", "0.2", "--ack-error", "0.1",
-                    "--seed", "77")
-repeat_b = simulate("--packets", "30", "--ws", "3", "--wr", "3",
-                    "--data-error", "0.2", "--ack-error", "0.1",
-                    "--seed", "77")
-assert repeat_a == repeat_b
+same_seed_a = simulate("--source", "finite", "--packets", "20", "--ws", "4",
+                       "--wr", "4", "--pd", "0.2", "--pa", "0.1",
+                       "--seed", "77")[0]
+same_seed_b = simulate("--source", "finite", "--packets", "20", "--ws", "4",
+                       "--wr", "4", "--pd", "0.2", "--pa", "0.1",
+                       "--seed", "77")[0]
+assert same_seed_a == same_seed_b
+
+default_seeds = simulate("--source", "finite", "--packets", "1",
+                         "--pd", "0", "--pa", "0")
+assert [row["seed"] for row in default_seeds] == [
+    "400315188", "400381481", "400385757"
+]
 
 rejects("--ws", "4", "--wr", "4", "--seq-space", "7")
-rejects("--data-error", "1")
+rejects("--pd", "1")
 rejects("--source", "invalid")
 
-print("ARQ tests passed")
+print("Lab 4 ARQ tests passed")

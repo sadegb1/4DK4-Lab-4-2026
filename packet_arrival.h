@@ -1,12 +1,18 @@
-#ifndef LAB4_PACKET_ARRIVAL_H
-#define LAB4_PACKET_ARRIVAL_H
+#ifndef _PACKET_ARRIVAL_H_
+#define _PACKET_ARRIVAL_H_
 
 #include "main.h"
 
-void
-data_arrival_event(Simulation_Run_Ptr, void *);
+Packet_Ptr
+packet_new(Simulation_Run_Data_Ptr, Time);
+
+long int
+schedule_packet_arrival_event(Simulation_Run_Ptr, Time, Packet_Ptr);
 
 void
-ack_arrival_event(Simulation_Run_Ptr, void *);
+packet_arrival_event(Simulation_Run_Ptr, void *);
 
-#endif
+void
+acknowledgment_arrival_event(Simulation_Run_Ptr, void *);
+
+#endif /* packet_arrival.h */

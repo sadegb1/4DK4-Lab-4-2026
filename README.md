@@ -1,69 +1,84 @@
-# Lab 4: ARQ discrete-event simulator
+# Lab 4: Simulation of ARQ Protocols
 
-This project uses the bundled `simlib` event scheduler to model one source and
-one destination over a point-to-point link. The generic sender/receiver-window
-implementation selects:
+This project adapts the Lab 3 discrete-event simulator to one source, one
+destination, and one point-to-point link. It retains the Lab 3 event scheduler,
+random-number generator, packet-duration module, and source-file organization.
+The station contention, collision, and backoff model is replaced by Stop-and-
+Wait, Go-Back-N, and Selective-Repeat ARQ.
 
-- Stop-and-Wait when `Ws=1, Wr=1`
-- Go-Back-N when `Wr=1`
-- Selective-Repeat when `Wr>1`
+## Preparation defaults
 
-The sequence-number space must satisfy `Ws + Wr <= sequence_space`.
+Simulation time is measured in milliseconds. The default packet length is
+1000 bits, the link rate is 1 Mbps, and the resulting data-packet transmission
+time is 1 ms. The round-trip propagation delay is 10 ms (5 ms per direction);
+the default timeout is 15 ms. ACK transmission and processing times are
+neglected. Data-packet and ACK errors are independently sampled for every
+transmission attempt.
 
-The source is divided into Lab 3-style modules: `main.c` handles configuration
-and run control, `packet_transmission.c` handles data/ACK transmission and
-timeouts, `packet_arrival.c` handles receiver and ACK-arrival processing,
-`output.c` formats results, and `cleanup.c` releases simulation state.
+The sender/receiver windows select the protocol:
 
-## Build and test
+- `Ws=1, Wr=1`: Stop-and-Wait
+- `Wr=1`: Go-Back-N
+- `Wr>1`: Selective-Repeat
+
+The configured sequence-number space must satisfy `Ws + Wr <= M`. Packets are
+tracked internally by absolute IDs and their displayed sequence numbers are
+`ID mod M`; receiver decisions use the absolute IDs. This avoids ambiguity from
+sequence-number wraparound in this model.
+
+## Build and verification
 
 ```sh
 make
 make test
 ```
 
-The program writes one CSV header and one result row to standard output. Invalid
-arguments are reported on standard error.
+`make` builds `app`. The tests check error-free timing, all three protocol
+mappings, recovery from data and ACK errors, timeout behavior, repeatability
+with a fixed seed, and parameter validation.
+
+To print short event traces for the verification experiment:
+
+```sh
+make app_trace
+./app_trace --source finite --packets 4 --pd 0.5 --pa 0.5 --seed 400315188
+```
+
+The trace build prints event details as well as the final CSV result.
 
 ## Running experiments
 
-Finite-source example:
+Use `./app --help` for all options. Each invocation prints a CSV header and
+one result row per configured random seed. By default, the three Lab 3 seeds
+are reused for each run, so protocol and parameter comparisons use common
+seeds. `--seed N` runs one selected seed. Confirm that at least one seed in
+`RANDOM_SEED_LIST` is a group member's student ID, as required by the lab.
+
+Examples:
 
 ```sh
-./arq_sim --source finite --packets 1000 --ws 4 --wr 4 \
-  --data-error 0.01 --ack-error 0.005 --timeout 5 --seed 41
+# Continuously backlogged, error-free GBN
+./app --source backlogged --runlength 1000000 --ws 12 --wr 1 --pd 0 --pa 0
+
+# Selective-Repeat with several receiver windows
+./app --source backlogged --runlength 1000000 --ws 16 --wr 4 --pd 0.05 --pa 0
+
+# Finite transfer of 100 packets
+./app --source finite --packets 100 --ws 8 --wr 4 --pd 0.05 --pa 0.05
+
+# Change the timeout (milliseconds)
+./app --source backlogged --ws 16 --wr 4 --pd 0.05 --pa 0.02 --timeout 25
 ```
 
-Continuously backlogged example:
+Each experiment can be run as repeated invocations with one parameter changed;
+the CSV rows can then be combined for plotting. Use the same seed list for all
+protocol comparisons. For a finite transfer, the simulation ends when the
+sender has received ACKs for all packets. For a backlogged source, it ends when
+`RUNLENGTH` packets have been delivered in order.
 
-```sh
-./arq_sim --source backlogged --duration 10000 --ws 8 --wr 1 \
-  --data-error 0.01 --ack-error 0.005 --timeout 5 --seed 41
-```
-
-The complete set of arguments is printed by `./arq_sim --help`. Re-run with
-different seeds or parameter values to compare performance.
-
-## Model and assumptions
-
-- Data transmissions are serialized in the source-to-destination direction;
-  ACK transmissions are serialized independently in the reverse direction
-  (full duplex). Both directions use the same one-way propagation delay.
-- Data and ACK transmission times, propagation delay, error probabilities, and
-  timeout are configurable. Each transmission attempt is independently erased
-  with its direction's configured probability; corruption is treated as loss.
-- The source is initially backlogged. Finite mode has exactly `--packets`
-  packets available from time zero and ends when all have been acknowledged.
-  Backlogged mode supplies packets whenever a sender-window slot opens and
-  runs for the configured duration; its reported delivery count includes only
-  packets delivered by the receiver before the duration expires.
-- In-order delivery is counted at the destination. Selective Repeat buffers
-  in-window out-of-order frames and acknowledges them individually. Go-Back-N
-  discards out-of-order frames and sends cumulative ACKs.
-- Timeout countdown begins at the end of a data-frame transmission. Stop-and-
-  Wait and Go-Back-N use one timer for the oldest unacknowledged packet;
-  Selective-Repeat uses an individual timer per outstanding packet.
-- Throughput is delivered packets divided by simulated time. Mean delay is
-  measured from packet creation at the sender to in-order delivery at the
-  receiver. For the backlogged source, packet creation occurs when the packet
-  enters the sender's active window.
+The CSV reports delivered-packet link efficiency
+`delivered * 1 ms / simulation_time`, the average transmission attempts per
+delivered packet, mean packet delay, packet/ACK errors, timeout count, and
+transfer/run timing. Finite-source packets are present at time zero; backlogged
+packets are created as sender-window slots become available. Timeout counting
+begins when a data-packet transmission completes.

@@ -1,9 +1,9 @@
-#ifndef LAB4_CLEANUP_H
-#define LAB4_CLEANUP_H
+#ifndef _CLEANUP_H_
+#define _CLEANUP_H_
 
-#include "main.h"
+#include "simlib.h"
 
 void
-cleanup(Simulation_State *);
+cleanup(Simulation_Run_Ptr);
 
-#endif
+#endif /* cleanup.h */

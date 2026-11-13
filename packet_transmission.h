@@ -1,25 +1,22 @@
-#ifndef LAB4_PACKET_TRANSMISSION_H
-#define LAB4_PACKET_TRANSMISSION_H
+#ifndef _PACKET_TRANSMISSION_H_
+#define _PACKET_TRANSMISSION_H_
 
 #include "main.h"
 
 void
-send_frame(Simulation_State *, Packet_State *, double);
+fill_sender_window(Simulation_Run_Ptr);
 
 void
-fill_sender_window(Simulation_State *, double);
+schedule_go_back_n_timer(Simulation_Run_Ptr, Packet_Ptr, Time);
 
 void
-send_acknowledgment(Simulation_State *, Packet_State *, double);
+schedule_transmission_start_event(Simulation_Run_Ptr, Time, Packet_Ptr);
 
 void
-schedule_go_back_n_timer(Simulation_State *, Packet_State *, double);
+transmission_start_event(Simulation_Run_Ptr, void *);
 
 void
 transmission_end_event(Simulation_Run_Ptr, void *);
-
-void
-ack_transmission_end_event(Simulation_Run_Ptr, void *);
 
 void
 selective_repeat_timeout_event(Simulation_Run_Ptr, void *);
@@ -27,4 +24,4 @@ selective_repeat_timeout_event(Simulation_Run_Ptr, void *);
 void
 go_back_n_timeout_event(Simulation_Run_Ptr, void *);
 
-#endif
+#endif /* packet_transmission.h */

@@ -1,89 +1,84 @@
-#ifndef LAB4_MAIN_H
-#define LAB4_MAIN_H
+#ifndef _MAIN_H_
+#define _MAIN_H_
 
 #include <stddef.h>
 #include <stdint.h>
 
+#include "channel.h"
+#include "parameters.h"
 #include "simlib.h"
+#include "simparameters.h"
+
+typedef double Time;
 
 typedef enum {
-  SOURCE_FINITE,
-  SOURCE_BACKLOGGED
-} Source_Mode;
+  WAITING,
+  TRANSMITTING,
+  ACKNOWLEDGED
+} Packet_Status;
 
-typedef struct {
-  Source_Mode source;
-  uint64_t packet_limit;
-  uint64_t send_window;
-  uint64_t receive_window;
-  uint64_t sequence_space;
-  double duration;
-  double data_tx_time;
-  double ack_tx_time;
-  double propagation_delay;
-  double timeout;
-  double data_error;
-  double ack_error;
-  unsigned seed;
-} Config;
-
-typedef struct _packet_state_ {
+typedef struct _packet_ {
   uint64_t id;
-  uint64_t attempts;
+  uint64_t sequence_number;
+  Time arrive_time;
+  Time service_time;
+  Packet_Status status;
+  uint64_t transmission_attempts;
   int received;
   int delivered;
   int acknowledged;
-  double created_at;
-  double acknowledged_at;
-  long int timer_event_id;
-} Packet_State;
+  Time acknowledged_time;
+  long int timeout_event_id;
+} Packet, *Packet_Ptr;
 
 typedef struct _transmission_attempt_ {
-  Packet_State *packet;
-  double start_time;
+  Packet_Ptr packet;
+  Time start_time;
   struct _transmission_attempt_ *next;
   struct _transmission_attempt_ *previous;
-} Transmission_Attempt;
+} Transmission_Attempt, *Transmission_Attempt_Ptr;
 
-typedef struct _simulation_state_ {
-  Config config;
-  Simulation_Run_Ptr run;
-  Rand_Stream_Ptr random;
-  Packet_State **packets;
+typedef struct _simulation_run_data_ {
+  Simulation_Parameters parameters;
+  Packet_Ptr *packets;
   size_t packet_capacity;
+  Fifoqueue_Ptr source_buffer;
+  Channel_Ptr channel;
   uint64_t next_to_send;
   uint64_t sender_base;
   uint64_t receiver_base;
-  uint64_t generated;
-  uint64_t delivered;
-  uint64_t acknowledged;
-  uint64_t unique_packets_transmitted;
-  uint64_t retransmissions;
-  uint64_t data_losses;
-  uint64_t ack_transmissions;
-  uint64_t ack_losses;
+  uint64_t arrival_count;
+  uint64_t number_of_packets_processed;
+  uint64_t number_of_packets_acked;
+  uint64_t data_packet_errors;
+  uint64_t ack_transmission_attempts;
+  uint64_t ack_errors;
+  uint64_t timeout_count;
+  uint64_t blip_counter;
+  uint64_t random_seed;
+  unsigned long long transmission_attempts;
+  unsigned long long retransmission_attempts;
   double accumulated_delay;
-  double data_tx_available;
-  double ack_tx_available;
-  long int go_back_n_timer_id;
-  uint64_t go_back_n_timer_packet;
-  Transmission_Attempt *attempts;
-} Simulation_State;
+  Time data_link_available;
+  long int go_back_n_timer_event_id;
+  uint64_t go_back_n_timer_packet_id;
+  Transmission_Attempt_Ptr attempts;
+} Simulation_Run_Data, *Simulation_Run_Data_Ptr;
 
-Simulation_State *
-state_from_run(Simulation_Run_Ptr);
+Simulation_Run_Data_Ptr
+simulation_run_get_data(Simulation_Run_Ptr);
 
-Packet_State *
-get_packet(Simulation_State *, uint64_t);
+Packet_Ptr
+packet_get(Simulation_Run_Data_Ptr, uint64_t);
 
 long int
-schedule_event(Simulation_State *,
+schedule_event(Simulation_Run_Ptr,
                const char *,
                void (*)(Simulation_Run_Ptr, void *),
                void *,
-               double);
+               Time);
 
 void
-cancel_event(Simulation_State *, long int *);
+cancel_event(Simulation_Run_Ptr, long int *);
 
-#endif
+#endif /* _MAIN_H_ */
