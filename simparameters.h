@@ -19,10 +19,9 @@
 #define DEFAULT_RECEIVE_WINDOW 1
 #define DEFAULT_SEQUENCE_SPACE 256
 #define DEFAULT_NUMBER_OF_PACKETS 100
-#define RUNLENGTH 1000000
+#define RUNLENGTH 500000
 #define BLIPRATE 100000
 
-/* Preserve the Lab 3 seed set; confirm one is a group member's student ID. */
 #define RANDOM_SEED_LIST 400315188, 400381481, 400385757
 
 #endif /* _SIMPARAMETERS_H_ */
