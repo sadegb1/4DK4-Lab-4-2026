@@ -19,7 +19,6 @@ main(int argc, char **argv)
   unsigned send_window;
   size_t seed_index;
   size_t receive_index;
-  size_t pd_index;
 
   int parse_result = parameters_parse(argc, argv, &parameters);
 
@@ -31,9 +30,9 @@ main(int argc, char **argv)
     return EXIT_FAILURE;
   }
 
-  //init parameters for pt 2
+  // Initialize parameters for Part 3b.
   parameters.source_mode = BACKLOGGED_SOURCE;
-  parameters.packet_error_probability = 0.0; //change to a 'suitable' value lmoa whateva that means
+  parameters.packet_error_probability = 0.05;
   parameters.ack_error_probability = 0.0;
   parameters.sequence_space = DEFAULT_SEQUENCE_SPACE;
   // parameters.send_window = 1;
