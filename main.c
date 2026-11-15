@@ -11,7 +11,7 @@ main(int argc, char **argv)
 {
   Simulation_Parameters parameters;
   unsigned random_seeds[] = {RANDOM_SEED_LIST, 0};
-  const unsigned recieve_windows[] = {1, 2, 4, 8, 11};
+  const unsigned recieve_windows[] = {1};
   double pd[] = {0.01, 0.025, 0.05, 0.075, 0.1};
 
   
@@ -36,7 +36,7 @@ main(int argc, char **argv)
   // parameters.packet_error_probability = 0.0;
   parameters.ack_error_probability = 0.0;
   parameters.sequence_space = DEFAULT_SEQUENCE_SPACE;
-  parameters.send_window = 11;
+  parameters.send_window = 1;
 
 /*
    * If --seed was provided, replace the default seed list with
