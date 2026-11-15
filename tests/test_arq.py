@@ -6,6 +6,7 @@ import sys
 
 
 EXECUTABLE = sys.argv[1]
+TRACE_EXECUTABLE = sys.argv[2]
 
 
 def simulate(*arguments):
@@ -30,6 +31,15 @@ def rejects(*arguments):
     assert result.stderr
 
 
+def trace(*arguments):
+    return subprocess.run(
+        [TRACE_EXECUTABLE, *arguments],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+
+
 sw = simulate("--source", "finite", "--packets", "5", "--ws", "1",
               "--wr", "1", "--pd", "0", "--pa", "0", "--seed", "41")[0]
 assert sw["protocol"] == "stop-and-wait"
@@ -42,12 +52,29 @@ assert sw["simulation_time_ms"] == "55.000000"
 assert sw["link_efficiency"] == "0.090909"
 assert sw["mean_delay_ms"] == "28.000000"
 
+sw_duplicate_trace = trace(
+    "--source", "finite", "--packets", "2", "--ws", "1", "--wr", "1",
+    "--pd", "0", "--pa", "0.5", "--seed", "77",
+)
+assert "At 6.000: ACK for packet 0 lost" in sw_duplicate_trace
+assert "At 22.000: ACK for packet 0 sent" in sw_duplicate_trace
+
 gbn = simulate("--source", "backlogged", "--runlength", "25", "--ws", "12",
                "--wr", "1", "--pd", "0", "--pa", "0", "--seed", "41")[0]
 assert gbn["protocol"] == "go-back-n"
 assert gbn["delivered"] == "25"
 assert gbn["timeouts"] == "0"
 assert gbn["attempts_per_delivered"] == "1.000000"
+
+gbn_out_of_sequence_trace = trace(
+    "--source", "finite", "--packets", "4", "--ws", "4", "--wr", "1",
+    "--pd", "0.5", "--pa", "0.5", "--seed", "400315188",
+)
+assert "At 9.000: Out-of-sequence packet 3 discarded; no ACK sent" in \
+       gbn_out_of_sequence_trace
+assert "At 9.000: ACK for packet 1 sent" not in gbn_out_of_sequence_trace
+assert "go-back-n,finite,4,1,4,0.500000,0.500000,15.000000,400315188,4,4,4," \
+       in gbn_out_of_sequence_trace
 
 sr = simulate("--source", "finite", "--packets", "20", "--ws", "4",
               "--wr", "4", "--pd", "0.1", "--pa", "0.1",

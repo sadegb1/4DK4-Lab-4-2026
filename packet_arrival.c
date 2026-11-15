@@ -126,11 +126,12 @@ packet_arrival_event(Simulation_Run_Ptr simulation_run, void *attachment)
       packet->received = 1;
       deliver_packet(simulation_run, data, packet, now);
       data->receiver_base++;
-    }
-    if (data->receiver_base != 0)
       ack_packet = packet_get(data, data->receiver_base - 1);
-    else {
-      TRACE(printf("At %.3f: No cumulative ACK available yet\n", now);)
+    } else if (packet->id < data->receiver_base) {
+      ack_packet = packet_get(data, data->receiver_base - 1);
+    } else {
+      TRACE(printf("At %.3f: Out-of-sequence packet %llu discarded; no ACK sent\n",
+                   now, (unsigned long long) packet->id);)
     }
   } else if (packet->id < data->receiver_base) {
     ack_packet = packet;

@@ -21,6 +21,13 @@ The sender/receiver windows select the protocol:
 - `Wr=1`: Go-Back-N
 - `Wr>1`: Selective-Repeat
 
+For Go-Back-N, a future out-of-sequence packet is discarded without an ACK;
+a duplicate of a previously accepted packet is re-ACKed to recover a lost ACK.
+Stop-and-Wait uses the same duplicate-ACK recovery. Selective-Repeat buffers
+in-window out-of-order packets, ACKs them individually, and retransmits timed-out
+packets individually. The lecture's optional NAK mechanism is not modeled; the
+lab experiments specify data-packet and ACK errors with timeout recovery.
+
 The configured sequence-number space must satisfy `Ws + Wr <= M`. Packets are
 tracked internally by absolute IDs and their displayed sequence numbers are
 `ID mod M`; receiver decisions use the absolute IDs. This avoids ambiguity from

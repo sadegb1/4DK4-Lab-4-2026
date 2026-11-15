@@ -19,8 +19,8 @@ app: $(SOURCES) $(HEADERS)
 app_trace: $(SOURCES) $(HEADERS)
 	$(CC) $(CFLAGS) -DTRACE_ON -o $@ $(SOURCES) $(LDLIBS)
 
-test: app
-	python3 tests/test_arq.py ./app
+test: app app_trace
+	python3 tests/test_arq.py ./app ./app_trace
 
 clean:
 	rm -f app_trace

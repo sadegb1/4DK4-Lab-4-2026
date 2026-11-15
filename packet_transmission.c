@@ -125,7 +125,7 @@ transmission_end_event(Simulation_Run_Ptr simulation_run, void *attachment)
     } else {
       cancel_event(simulation_run, &packet->timeout_event_id);
       packet->timeout_event_id =
-          schedule_event(simulation_run, "Selective-repeat timeout",
+          schedule_event(simulation_run, "Timeout",
                          selective_repeat_timeout_event, packet,
                          now + data->parameters.timeout);
     }
@@ -146,7 +146,7 @@ schedule_go_back_n_timer(Simulation_Run_Ptr simulation_run,
   cancel_event(simulation_run, &data->go_back_n_timer_event_id);
   data->go_back_n_timer_packet_id = packet->id;
   data->go_back_n_timer_event_id =
-      schedule_event(simulation_run, "Go-back-N timeout",
+      schedule_event(simulation_run, "Timeout",
                      go_back_n_timeout_event, packet,
                      now + data->parameters.timeout);
 }
@@ -182,7 +182,7 @@ go_back_n_timeout_event(Simulation_Run_Ptr simulation_run, void *attachment)
     return;
 
   data->timeout_count++;
-  TRACE(printf("At %.3f: Go-back-N timeout at packet %llu\n", now,
+  TRACE(printf("At %.3f: Timeout at packet %llu\n", now,
                (unsigned long long) base_packet->id);)
   for (id = data->sender_base; id < data->next_to_send; id++) {
     Packet_Ptr packet = packet_get(data, id);
